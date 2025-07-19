@@ -10,7 +10,7 @@ extern const HashAlgo SHA256_ALGO;
 
 typedef struct {
     uint32_t state[8];
-    uint64_t bit_count;
+    uint64_t bitlen;
     uint8_t buffer[64];
 } SHA256_CTX;
 

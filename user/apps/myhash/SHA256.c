@@ -1,3 +1,19 @@
+/*
+参考：https://zhuanlan.zhihu.com/p/94619052
+SHA256算法实现过程:
+1. 填充：在消息后添加比特'1'，然后添加若干比特'0'，直到长度对512求余的结果等于448
+2. 附加长度：用64位表示原始信息的长度，附加在已填充后的消息后面
+3. 初始化哈希值：使用8个初始哈希值(定义为前8个质数平方根的小数部分的前32位)
+4. 分块计算：将消息分成512位的块，对每个块进行处理
+5. 处理每个块：展开消息为64个32位字，然后进行64轮压缩函数计算。加密结束后将获得的四个数abcd分别加进寄存器ABCD中
+6. 所有块结束加密后获得的寄存器值按DCBA的顺序叠在一起就是最终哈希值
+
+
+优化：
+1. 使用SIMD技术，通过SSE2指令集，使加载m[]数组时能够并行处理
+2. 宏定义替代了原来的循环结构，避免了循环控制带来的开销
+*/
+
 #include "SHA256.h"
 
 const HashAlgo SHA256_ALGO = {
@@ -8,15 +24,6 @@ const HashAlgo SHA256_ALGO = {
     .digest_size = 32,
     .name = "SHA256",
 };
-
-/*
-SHA256算法实现过程:
-1. 填充：在消息后添加比特'1'，然后添加若干比特'0'，直到长度对512求余的结果等于448
-2. 附加长度：用64位表示原始信息的长度，附加在已填充后的消息后面
-3. 初始化哈希值：使用8个初始哈希值(定义为前8个质数平方根的小数部分的前32位)
-4. 分块计算：将消息分成512位的块，对每个块进行处理
-5. 处理每个块：展开消息为64个32位字，然后进行64轮压缩函数计算
-*/
 
 // SHA256算法中使用的64个常数（第64个质数的立方根的前32位的小数部分）
 static const uint32_t K[64] = {
@@ -44,7 +51,7 @@ static const uint32_t K[64] = {
 // 初始化SHA256上下文
 void sha256_init(SHA256_CTX *ctx)
 {
-    ctx->bit_count = 0;
+    ctx->bitlen = 0;
     // SHA256的初始哈希值（前8个质数平方根的小数部分的前32位）
     ctx->state[0] = 0x6a09e667;
     ctx->state[1] = 0xbb67ae85;
@@ -56,15 +63,50 @@ void sha256_init(SHA256_CTX *ctx)
     ctx->state[7] = 0x5be0cd19;
 }
 
+#ifdef __SSE2__
+#include <emmintrin.h> // SSE2
+#endif
+
 // SHA256的核心处理函数，处理一个512位的数据块
 static void sha256_transform(SHA256_CTX *ctx, const uint8_t data[])
 {
     uint32_t a, b, c, d, e, f, g, h, i, j, t1, t2, m[64];
 
-    // 准备消息调度，将字节数据转换为32位字并扩展到64个字
+#ifdef __SSE2__
+    // 使用SIMD加载和转换数据（大端序）
+    if (((uintptr_t)data & 0xF) == 0) {  // 检查16字节对齐
+        // 使用SSE2指令加载数据，每次加载16字节（4个32位字）
+        __m128i *data_ptr = (__m128i*)data;
+        __m128i chunk0 = _mm_load_si128(data_ptr);
+        __m128i chunk1 = _mm_load_si128(data_ptr + 1);
+        __m128i chunk2 = _mm_load_si128(data_ptr + 2);
+        __m128i chunk3 = _mm_load_si128(data_ptr + 3);
+
+        // 暂存加载的数据
+        uint32_t temp[16];
+        _mm_storeu_si128((__m128i*)&temp[0], chunk0);
+        _mm_storeu_si128((__m128i*)&temp[4], chunk1);
+        _mm_storeu_si128((__m128i*)&temp[8], chunk2);
+        _mm_storeu_si128((__m128i*)&temp[12], chunk3);
+
+        // SHA256需要大端序，进行转换
+        for (i = 0; i < 16; ++i) {
+            m[i] = ((temp[i] & 0xFF) << 24) | ((temp[i] & 0xFF00) << 8) | 
+                   ((temp[i] & 0xFF0000) >> 8) | ((temp[i] & 0xFF000000) >> 24);
+        }
+    } else {
+        // 对于未对齐的数据，使用常规方法
+        for (i = 0, j = 0; i < 16; ++i, j += 4)
+            m[i] = (data[j] << 24) | (data[j + 1] << 16) | (data[j + 2] << 8) | (data[j + 3]);
+    }
+#else
+    // 标准非SIMD实现
     for (i = 0, j = 0; i < 16; ++i, j += 4)
         m[i] = (data[j] << 24) | (data[j + 1] << 16) | (data[j + 2] << 8) | (data[j + 3]);
-    for (; i < 64; ++i)
+#endif
+
+    // 消息扩展，将16个字扩展为64个字
+    for (i = 16; i < 64; ++i)
         m[i] = SIG1(m[i - 2]) + m[i - 7] + SIG0(m[i - 15]) + m[i - 16];
 
     // 初始化算法的工作变量
@@ -77,20 +119,101 @@ static void sha256_transform(SHA256_CTX *ctx, const uint8_t data[])
     g = ctx->state[6];
     h = ctx->state[7];
 
-    // 主循环（64轮）
-    for (i = 0; i < 64; ++i)
-    {
-        t1 = h + EP1(e) + CH(e, f, g) + K[i] + m[i];
-        t2 = EP0(a) + MAJ(a, b, c);
-        h = g;
-        g = f;
-        f = e;
-        e = d + t1;
-        d = c;
-        c = b;
-        b = a;
-        a = t1 + t2;
+    // for (i = 0; i < 64; ++i)
+    // {
+    //     t1 = h + EP1(e) + CH(e, f, g) + K[i] + m[i];
+    //     t2 = EP0(a) + MAJ(a, b, c);
+    //     h = g;
+    //     g = f;
+    //     f = e;
+    //     e = d + t1;
+    //     d = c;
+    //     c = b;
+    //     b = a;
+    //     a = t1 + t2;
+    // }
+
+    // 定义SHA256运算宏，避免循环控制，提高性能
+    #define SHA256_ROUND(a, b, c, d, e, f, g, h, k, w) { \
+        t1 = h + EP1(e) + CH(e, f, g) + k + w; \
+        t2 = EP0(a) + MAJ(a, b, c); \
+        h = g; \
+        g = f; \
+        f = e; \
+        e = d + t1; \
+        d = c; \
+        c = b; \
+        b = a; \
+        a = t1 + t2; \
     }
+
+    // 展开的64轮压缩函数，替代循环结构
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[0], m[0]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[1], m[1]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[2], m[2]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[3], m[3]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[4], m[4]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[5], m[5]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[6], m[6]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[7], m[7]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[8], m[8]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[9], m[9]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[10], m[10]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[11], m[11]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[12], m[12]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[13], m[13]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[14], m[14]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[15], m[15]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[16], m[16]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[17], m[17]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[18], m[18]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[19], m[19]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[20], m[20]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[21], m[21]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[22], m[22]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[23], m[23]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[24], m[24]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[25], m[25]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[26], m[26]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[27], m[27]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[28], m[28]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[29], m[29]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[30], m[30]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[31], m[31]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[32], m[32]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[33], m[33]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[34], m[34]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[35], m[35]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[36], m[36]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[37], m[37]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[38], m[38]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[39], m[39]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[40], m[40]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[41], m[41]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[42], m[42]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[43], m[43]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[44], m[44]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[45], m[45]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[46], m[46]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[47], m[47]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[48], m[48]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[49], m[49]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[50], m[50]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[51], m[51]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[52], m[52]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[53], m[53]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[54], m[54]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[55], m[55]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[56], m[56]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[57], m[57]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[58], m[58]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[59], m[59]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[60], m[60]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[61], m[61]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[62], m[62]);
+    SHA256_ROUND(a, b, c, d, e, f, g, h, K[63], m[63]);
+
+    #undef SHA256_ROUND
 
     // 将计算结果加到当前的哈希值上
     ctx->state[0] += a;
@@ -108,10 +231,10 @@ void sha256_update(SHA256_CTX *ctx, const uint8_t *data, size_t len)
 {
     // 每收集满64字节（512位）就调用sha256_transform进行一次处理
     size_t i = 0;
-    size_t index = (ctx->bit_count / 8) % 64; // 缓冲区中已有的字节数
+    size_t index = (ctx->bitlen / 8) % 64; // 缓冲区中已有的字节数
 
     // 更新总位数
-    ctx->bit_count += len * 8;
+    ctx->bitlen += len * 8;
 
     // 如果缓冲区中已有数据，先将缓冲区填满并处理
     if (index > 0)
@@ -140,7 +263,7 @@ void sha256_update(SHA256_CTX *ctx, const uint8_t *data, size_t len)
 void sha256_final(SHA256_CTX *ctx, uint8_t hash[32])
 {
     // 补一个1和一堆0直到最后一个块剩下8个字节(64位)存文件长度
-    size_t index = (ctx->bit_count / 8) % 64;
+    size_t index = (ctx->bitlen / 8) % 64;
     ctx->buffer[index++] = 0x80; // 添加一个字节，最高位为1，其余为0
 
     // 如果剩余空间不足以存放8字节的长度，则填充本块并处理，然后处理下一块
@@ -156,7 +279,7 @@ void sha256_final(SHA256_CTX *ctx, uint8_t hash[32])
     memset(&ctx->buffer[index], 0, 56 - index);
     
     // 添加消息长度（以比特为单位，大端序）
-    uint64_t bitlen_be = ctx->bit_count;
+    uint64_t bitlen_be = ctx->bitlen;
     for (int i = 0; i < 8; ++i)
         ctx->buffer[56 + i] = (uint8_t)(bitlen_be >> ((7 - i) * 8)) & 0xFF;
 

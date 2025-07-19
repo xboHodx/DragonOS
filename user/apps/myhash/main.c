@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+
 #include "file_reader.h"
 #include "hash_algo.h"
 #include "MD5.h"
@@ -36,7 +38,7 @@ void cal_hash(HashAlgoType algo_type, const char* files[], size_t filenum){
     job.algo->init(job.ctx);
 
     for (size_t i = 0; i < filenum; i++){
-        if(read_and_process_file(&job, files[i], 4096) < 0){
+        if(read_and_process_file(&job, files[i], sysconf(_SC_PAGESIZE)) < 0){
             // 错误信息已经在read_and_process_file中打印
             free(job.ctx);
             return;
