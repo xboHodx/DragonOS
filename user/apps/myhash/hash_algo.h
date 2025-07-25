@@ -19,11 +19,15 @@ typedef struct {
     size_t ctx_size;      // 上下文大小（字节）
     size_t digest_size;   // 输出长度（如 MD5 是 16 字节，SHA256 是 32 字节）
     const char *name;     // 算法名称
+    HashAlgoType algo_type;
 } HashAlgo;
 
 typedef struct {
     const HashAlgo *algo;
     void *ctx;
+    const char **files;
+    size_t filenum;
+    int row_number;
 } HashJob;
 
 #endif

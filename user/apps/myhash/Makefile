@@ -7,8 +7,8 @@ endif
 CC=$(CROSS_COMPILE)gcc
 
 
-all: main.c MD5.c MD5.h
-	$(CC) -static -o myhash main.c MD5.c MD5.h file_reader.c file_reader.h hash_algo.h SHA256.h SHA256.c
+all: main.c MD5.c file_reader.c SHA256.c
+	$(CC) -static -o myhash main.c MD5.c file_reader.c SHA256.c
 
 .PHONY: install clean
 install: all

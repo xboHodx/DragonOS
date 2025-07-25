@@ -21,6 +21,7 @@ const HashAlgo MD5_ALGO = {
     .ctx_size = sizeof(MD5_CTX),
     .digest_size = 16,
     .name = "MD5",
+    .algo_type = HASH_ALGO_MD5
 };
 
 // 加密运算中的四个线性函数
@@ -84,14 +85,6 @@ static void md5_transform(MD5_CTX *ctx, const uint8_t data[])
         __m128i chunk2 = _mm_load_si128(data_ptr + 2);
         __m128i chunk3 = _mm_load_si128(data_ptr + 3);
 
-        // 小端系统可以直接存储，大端系统需要字节交换
-// #if defined(__BIG_ENDIAN__) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-//         // 字节交换，为大端系统
-//         chunk0 = _mm_shuffle_epi8(chunk0, _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3));
-//         chunk1 = _mm_shuffle_epi8(chunk1, _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3));
-//         chunk2 = _mm_shuffle_epi8(chunk2, _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3));
-//         chunk3 = _mm_shuffle_epi8(chunk3, _mm_set_epi8(12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3));
-// #endif
         // 将数据存储到m数组
         _mm_storeu_si128((__m128i*)&m[0], chunk0);
         _mm_storeu_si128((__m128i*)&m[4], chunk1);
