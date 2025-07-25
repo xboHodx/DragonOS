@@ -21,6 +21,7 @@ const HashAlgo MD5_ALGO = {
     .ctx_size = sizeof(MD5_CTX),
     .digest_size = 16,
     .name = "MD5",
+    .algo_type = HASH_ALGO_MD5
 };
 
 // 加密运算中的四个线性函数

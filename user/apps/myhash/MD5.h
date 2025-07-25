@@ -10,7 +10,7 @@ extern const HashAlgo MD5_ALGO;
 
 typedef struct { // 算法上下文context
     uint32_t state[4];  // A, B, C, D 寄存器
-    uint64_t bitlen;    // 文件总长度(位数)
+    uint64_t bitlen;    // 已处理总长度(位数)
     uint8_t buffer[64]; // 当前的缓冲区
 } MD5_CTX;
 

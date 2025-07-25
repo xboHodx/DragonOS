@@ -23,6 +23,7 @@ const HashAlgo SHA256_ALGO = {
     .ctx_size = sizeof(SHA256_CTX),
     .digest_size = 32,
     .name = "SHA256",
+    .algo_type = HASH_ALGO_SHA256
 };
 
 // SHA256算法中使用的64个常数（第64个质数的立方根的前32位的小数部分）
