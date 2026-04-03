@@ -1376,15 +1376,12 @@ pub trait FileSystem: Any + Sync + Send + Debug {
     }
 
     /// Render the device/source field used by procfs mount exports.
-    fn proc_show_devname(
-        &self,
-        mount: &MountFS,
-        out: &mut dyn Write,
-    ) -> Result<(), SystemError> {
+    fn proc_show_devname(&self, mount: &MountFS, out: &mut dyn Write) -> Result<(), SystemError> {
         if let Some(source) = mount.mount_source() {
             out.write_str(&source).map_err(|_| SystemError::EINVAL)?;
         } else {
-            out.write_str(self.name()).map_err(|_| SystemError::EINVAL)?;
+            out.write_str(self.name())
+                .map_err(|_| SystemError::EINVAL)?;
         }
         Ok(())
     }

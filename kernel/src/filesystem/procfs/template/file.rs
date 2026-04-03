@@ -169,7 +169,7 @@ impl<F: FileOps + 'static> IndexNode for ProcFile<F> {
         mut data: MutexGuard<FilePrivateData>,
         flags: &FileFlags,
     ) -> Result<(), SystemError> {
-        self.inner.open(&mut *data, flags)
+        self.inner.open(&mut data, flags)
     }
 
     fn close(&self, _data: MutexGuard<FilePrivateData>) -> Result<(), SystemError> {

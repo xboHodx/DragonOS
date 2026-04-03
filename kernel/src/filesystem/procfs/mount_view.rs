@@ -146,8 +146,7 @@ fn render_mounts_line(entry: &ProcMountEntry, out: &mut String) -> Result<(), Sy
     let fstype = escape_mount_token(entry.mount.fs_type(), true);
     let options = render_mount_options(&entry.mount)?;
 
-    writeln!(out, "{devname} {mountpoint} {fstype} {options} 0 0")
-        .map_err(|_| SystemError::EINVAL)
+    writeln!(out, "{devname} {mountpoint} {fstype} {options} 0 0").map_err(|_| SystemError::EINVAL)
 }
 
 fn render_mountinfo_line(entry: &ProcMountEntry, out: &mut String) -> Result<(), SystemError> {

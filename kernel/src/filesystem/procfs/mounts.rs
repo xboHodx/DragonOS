@@ -1,17 +1,13 @@
 //! /proc/mounts - 当前进程视角的挂载点信息
 
-use crate::libs::mutex::MutexGuard;
-use crate::{
-    filesystem::{
-        procfs::{
-            mount_view::{
-                open_current_mount_file, read_cached_mount_file, ProcMountRenderKind,
-            },
-            template::{Builder, FileOps, ProcFileBuilder},
-        },
-        vfs::{file::FileFlags, FilePrivateData, IndexNode, InodeMode},
+use crate::filesystem::{
+    procfs::{
+        mount_view::{open_current_mount_file, read_cached_mount_file, ProcMountRenderKind},
+        template::{Builder, FileOps, ProcFileBuilder},
     },
+    vfs::{file::FileFlags, FilePrivateData, IndexNode, InodeMode},
 };
+use crate::libs::mutex::MutexGuard;
 use alloc::sync::{Arc, Weak};
 use system_error::SystemError;
 
