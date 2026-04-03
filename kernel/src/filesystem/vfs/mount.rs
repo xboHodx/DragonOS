@@ -132,7 +132,7 @@ impl MountFlags {
     ///
     /// A String containing the mount options in comma-separated format.
     #[inline(never)]
-    pub fn options_string(&self) -> String {
+    pub fn proc_mount_options_string(&self) -> String {
         let mut options = Vec::new();
 
         // Check read/write flag
@@ -180,25 +180,11 @@ impl MountFlags {
             options.push("lazytime");
         }
 
-        // Mount propagation flags
-        if self.contains(MountFlags::UNBINDABLE) {
-            options.push("unbindable");
-        }
-        if self.contains(MountFlags::PRIVATE) {
-            options.push("private");
-        }
-        if self.contains(MountFlags::SLAVE) {
-            options.push("slave");
-        }
-        if self.contains(MountFlags::SHARED) {
-            options.push("shared");
-        }
-
-        // Internal flags (typically not shown in /proc/mounts)
-        // We'll skip flags like BIND, MOVE, REC, REMOUNT, etc. as they're
-        // not typically displayed in mount options
-
         options.join(",")
+    }
+
+    pub fn options_string(&self) -> String {
+        self.proc_mount_options_string()
     }
 }
 
@@ -385,6 +371,14 @@ impl MountFS {
     #[inline(never)]
     pub fn self_mountpoint(&self) -> Option<Arc<MountFSInode>> {
         self.self_mountpoint.read().as_ref().cloned()
+    }
+
+    pub fn parent_mount(&self) -> Option<Arc<MountFS>> {
+        self.self_mountpoint().map(|inode| inode.mount_fs.clone())
+    }
+
+    pub fn mountpoint_inode(&self) -> Option<Arc<MountFSInode>> {
+        self.self_mountpoint()
     }
 
     /// @brief 用Arc指针包裹MountFS对象。
